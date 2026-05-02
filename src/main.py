@@ -2,8 +2,9 @@ import argparse
 import json
 from pathlib import Path
 
-import librosa
 import torch
+import torchaudio
+import torchaudio.functional as audio_F
 from snac import SNAC
 from tqdm import tqdm
 
@@ -36,8 +37,20 @@ def wav_files(folder: Path) -> list[Path]:
 
 
 def encode_file(model: SNAC, path: Path, device: torch.device) -> list[list[int]]:
-    audio, _ = librosa.load(path, sr=model.sampling_rate, mono=True)
-    audio_tensor = torch.from_numpy(audio).float().unsqueeze(0).unsqueeze(0).to(device)
+    audio, sample_rate = torchaudio.load(path)
+    audio = audio.to(device)
+
+    if audio.shape[0] > 1:
+        audio = audio.mean(dim=0, keepdim=True)
+
+    if sample_rate != model.sampling_rate:
+        audio = audio_F.resample(
+            audio,
+            orig_freq=sample_rate,
+            new_freq=model.sampling_rate,
+        )
+
+    audio_tensor = audio.unsqueeze(0)
 
     with torch.inference_mode():
         codes = model.encode(audio_tensor)
